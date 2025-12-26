@@ -454,111 +454,127 @@ var apps = {
   }
 };
 
-
-
-
-
 var notifications = {
   list: [],
   active: false,
   group: false,
 
   expandedId: null,
+  baseY: 0,
 
-  /* ===== UPDATE ===== */
-  update: function () {
-    notifications.active = ap37.notificationsActive();
-
-    if (notifications.active) {
-      var nots = notifications.group
-        ? ap37.getNotificationGroups()
-        : ap37.getNotifications();
-
-      notifications.list = nots;
-
-      for (var i = 1; i < 3; i++) {
-        var y = h - 30 + i;
-        background.printPattern(1, w, y);
-
-        if (i < nots.length) {
-          nots[i].y = y;
-          nots[i].ellipsis = (i === 2 && nots.length > 3);
-          notifications.printNotification(nots[i], false);
-        }
-      }
-    } else {
-      print(c / 2, 30, 'Activate notifications');
+  /* ===== CLEAR AREA ===== */
+  clearArea: function () {
+    for (var y = 0; y < 9; y++) {
+      print(0, notifications.baseY + y,
+        rightPad('', w, ' '), '#000000');
     }
   },
 
-  /* ===== AMBIL PESAN ===== */
+  /* ===== REMOVE LOCAL ===== */
+  removeById: function (id) {
+    for (var i = 0; i < notifications.list.length; i++) {
+      if (notifications.list[i].id === id) {
+        notifications.list.splice(i, 1);
+        return;
+      }
+    }
+  },
+
+  /* ===== MESSAGE EXTRACT ===== */
   getMessage: function (n) {
     if (n.message) return n.message;
     if (n.bigText) return n.bigText;
     if (n.body) return n.body;
-
-    if (n.lines && n.lines.length)
-      return n.lines.join(' ');
-
-    if (n.textLines && n.textLines.length)
-      return n.textLines.join(' ');
-
+    if (n.lines && n.lines.length) return n.lines.join(' ');
+    if (n.textLines && n.textLines.length) return n.textLines.join(' ');
     if (n.text) return n.text;
-    if (n.title) return n.title;
-
     return '';
+  },
+
+  /* ===== UPDATE ===== */
+  update: function () {
+    notifications.active = ap37.notificationsActive();
+    notifications.baseY = apps.topMargin - 6;
+
+    notifications.clearArea();
+
+    if (!notifications.active) {
+      print(0, notifications.baseY, 'Activate notifications');
+      return;
+    }
+
+    var nots = notifications.group
+      ? ap37.getNotificationGroups()
+      : ap37.getNotifications();
+
+    notifications.list = nots.slice(0, 3);
+
+    /* reset expandedId jika sudah tidak ada */
+    if (notifications.expandedId) {
+      var found = false;
+      for (var i = 0; i < notifications.list.length; i++) {
+        if (notifications.list[i].id === notifications.expandedId) {
+          found = true;
+          break;
+        }
+      }
+      if (!found) notifications.expandedId = null;
+    }
+
+    for (var i = 0; i < notifications.list.length; i++) {
+      var n = notifications.list[i];
+      n.y = notifications.baseY + i * 3;
+      n.ellipsis = (i === 2 && nots.length > 3);
+      notifications.printNotification(n, false);
+    }
   },
 
   /* ===== PRINT ===== */
   printNotification: function (n, highlight) {
-    var title = n.name || '';
+    var app = n.name || '';
+    var sender = n.title || '';
     var msg = notifications.getMessage(n);
     var isExpanded = (notifications.expandedId === n.id);
 
+    var title = sender || app;
     if (notifications.group && n.count > 1) {
       title += ' [' + n.count + ']';
     }
 
+    var maxLine = w - 2;
     var lines = [];
 
     if (isExpanded && msg) {
       lines.push(title + ':');
 
-      var maxLine = w - c / 2 - 2;
       var text = msg;
-
-      while (text.length > 0 && lines.length < 3) {
-        lines.push(text.substring(0, maxLine));
-        text = text.substring(maxLine);
+      while (text.length && lines.length < 3) {
+        var cut = text.lastIndexOf(' ', maxLine);
+        if (cut < 0) cut = maxLine;
+        lines.push(text.substring(0, cut));
+        text = text.substring(cut + 1);
       }
     } else {
-      var single = title;
-      if (msg) single += ' — ' + msg;
-
-      var maxLen = w - c / 2 - 2;
-      if (single.length > maxLen) {
-        single = single.substring(0, maxLen - 3) + '...';
+      var single = title + (msg ? ' — ' + msg : '');
+      if (single.length > maxLine) {
+        single = single.substring(0, maxLine - 3) + '...';
       }
-
       lines.push(single);
     }
 
     for (var i = 0; i < lines.length; i++) {
       print(
-        c / 30,
+        0,
         n.y + i,
-        lines[i],
+        rightPad(lines[i], w, ' '),
         highlight || isExpanded ? '#ff3333' : '#ffffff'
       );
     }
 
     if (n.ellipsis && !isExpanded) {
-      print(
-        w - 5,
-        n.y,
+      print(w - 4, n.y,
         '+' + (notifications.list.length - 3),
-        '#999999'
-      );
+        '#999999');
     }
   },
 
@@ -570,40 +586,36 @@ var notifications = {
 
   /* ===== TOUCH ===== */
   onTouch: function (x, y) {
-    if (!notifications.active) {
-      if (y === 3) ap37.requestNotificationsPermission();
-      return;
-    }
+    if (!notifications.active) return;
 
     for (var i = 0; i < notifications.list.length; i++) {
       var n = notifications.list[i];
 
       if (y >= n.y && y <= n.y + 2) {
 
-        /* TAP PERTAMA → EXPAND */
+        /* TAP 1 → EXPAND */
         if (notifications.expandedId !== n.id) {
           notifications.expandedId = n.id;
           notifications.update();
           return;
         }
 
-        /* TAP KEDUA → OPEN */
+        /* TAP 2 → OPEN & REMOVE */
         notifications.expandedId = null;
-        notifications.printNotification(n, true);
+        notifications.removeById(n.id);
+        notifications.clearArea();
 
         ap37.openNotification(n.id);
 
         setTimeout(function () {
           notifications.update();
-        }, 1000);
+        }, 1200);
 
         return;
       }
     }
   }
 };
-
-
 
 
   var transmissions = {
