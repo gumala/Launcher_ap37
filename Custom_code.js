@@ -18,8 +18,8 @@
     c = ap37.getCornersWidth();
 
     background.init();
-    print(c, 0, '        gml-rnd');
-    print(c, 1, '   live is never flat');
+    print(c, 0, '        gml-rnd'); // user name
+    print(c, 1, '   live is never flat'); // user quotes 
     time.init();
     battery.init();
     apps.init();
